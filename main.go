@@ -12,6 +12,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	v1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -20,6 +21,7 @@ import (
 var (
 	namespace  string
 	kubeconfig string
+	list       bool
 
 	defaultKubeconfig = filepath.Join(homedir.HomeDir(), ".kube", "config")
 )
@@ -27,6 +29,7 @@ var (
 func init() {
 	flag.StringVar(&namespace, "n", "default", "-n default")
 	flag.StringVar(&kubeconfig, "kubeconfig", defaultKubeconfig, "-kubeconfig ~/.kube/config or from env 'KUBECONFIG'")
+	flag.BoolVar(&list, "l", false, "-l list group/resources/verbs")
 }
 
 func main() {
@@ -46,6 +49,25 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
+	if list {
+		_, lists, err := clientset.ServerGroupsAndResources()
+		if err != nil {
+			panic(err.Error())
+		}
+		var allVerbs = Perm{}
+		for _, api := range lists {
+			for _, resource := range api.APIResources {
+				gv, _ := schema.ParseGroupVersion(api.GroupVersion)
+				group := gv.Group
+				allVerbs.AddGroup(group)
+				allVerbs.AddResources(group, resource.Name)
+				allVerbs.AddResourceVerbs(group, resource.Name, resource.Verbs...)
+			}
+		}
+		temp.Execute(os.Stdout, map[string]any{"Groups": allVerbs})
+		return
+	}
+
 	create, err := clientset.AuthorizationV1().SelfSubjectRulesReviews().Create(context.TODO(), &v1.SelfSubjectRulesReview{
 		Spec: v1.SelfSubjectRulesReviewSpec{
 			Namespace: namespace,
@@ -70,7 +92,7 @@ func main() {
 
 var temp, _ = template.New("").Funcs(sprig.FuncMap()).Parse(`
 {{ range $k, $g := .Groups }}
-{{ if eq $k "" }}core{{ else }}{{ $k }}{{ end }}
+{{ if eq $k "" }}""{{ else }}{{ $k }}{{ end }}
 
   {{- range $rk, $rv := $g }}
     {{- printf "- %s" $rk | nindent 2 }}
