@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -52,7 +53,7 @@ func main() {
 	if list {
 		_, lists, err := clientset.ServerGroupsAndResources()
 		if err != nil {
-			panic(err.Error())
+			log.Println(err)
 		}
 		var allVerbs = Perm{}
 		for _, api := range lists {
